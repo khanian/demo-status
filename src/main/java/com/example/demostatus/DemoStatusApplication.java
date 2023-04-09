@@ -26,6 +26,7 @@ import org.springframework.statemachine.listener.StateMachineListenerAdapter;
 import org.springframework.statemachine.state.State;
 import org.springframework.statemachine.support.DefaultStateMachineContext;
 import org.springframework.statemachine.support.StateMachineInterceptor;
+import org.springframework.statemachine.support.StateMachineInterceptorAdapter;
 import org.springframework.statemachine.transition.Transition;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
@@ -98,67 +99,28 @@ class OrderService {
 
     private static final String ORDER_ID_HEADER = "orderId";
     private StateMachine<OrderStates, OrderEvents> build(Long orderId) {
-        Order order = this.orderRepository.findOne(orderId);
-        String orderIdKey = String.valueOf(order.getId());
+        Optional<Order> orderById = this.orderRepository.findById(orderId);
+        Order order = orderById.get();
 
-        StateMachine<OrderStates, OrderEvents> sm = this.factory.getStateMachine(orderIdKey);
+        StateMachine<OrderStates, OrderEvents> sm = this.factory.getStateMachine(String.valueOf(order.getId()));
         sm.stop();
         sm.getStateMachineAccessor()
                 .doWithAllRegions(sma -> {
-
-                    sma.addStateMachineInterceptor(new StateMachineInterceptor<OrderStates, OrderEvents>() {
-                        @Override
-                        public Message<OrderEvents> preEvent(Message<OrderEvents> message, StateMachine<OrderStates, OrderEvents> stateMachine) {
-                            return null;
-                        }
-
-                        @Override
-                        public void preStateChange(State<OrderStates, OrderEvents> state, Message<OrderEvents> message, Transition<OrderStates, OrderEvents> transition, StateMachine<OrderStates, OrderEvents> stateMachine) {
-
-                        }
-
+                    sma.addStateMachineInterceptor(new StateMachineInterceptorAdapter<>() {
                         @Override
                         public void preStateChange(State<OrderStates, OrderEvents> state, Message<OrderEvents> message, Transition<OrderStates, OrderEvents> transition, StateMachine<OrderStates, OrderEvents> stateMachine, StateMachine<OrderStates, OrderEvents> rootStateMachine) {
-
-
                             Optional.ofNullable(message).ifPresent(msg ->
                                     Optional.ofNullable((Long)msg.getHeaders().getOrDefault(ORDER_ID_HEADER, -1L))
                                             .ifPresent(orderId1 -> {
-                                                Order order1 = orderRepository.findOne(orderId1);
-                                                order1.setOrderState((state.getId()));
+                                                Order order1 = orderRepository.getById(orderId1);
+                                                order1.setOrderState(state.getId());
                                                 orderRepository.save(order1);
                                             }));
                         }
-
-                        @Override
-                        public void postStateChange(State<OrderStates, OrderEvents> state, Message<OrderEvents> message, Transition<OrderStates, OrderEvents> transition, StateMachine<OrderStates, OrderEvents> stateMachine) {
-
-                        }
-
-                        @Override
-                        public void postStateChange(State<OrderStates, OrderEvents> state, Message<OrderEvents> message, Transition<OrderStates, OrderEvents> transition, StateMachine<OrderStates, OrderEvents> stateMachine, StateMachine<OrderStates, OrderEvents> rootStateMachine) {
-
-                        }
-
-                        @Override
-                        public StateContext<OrderStates, OrderEvents> preTransition(StateContext<OrderStates, OrderEvents> stateContext) {
-                            return null;
-                        }
-
-                        @Override
-                        public StateContext<OrderStates, OrderEvents> postTransition(StateContext<OrderStates, OrderEvents> stateContext) {
-                            return null;
-                        }
-
-                        @Override
-                        public Exception stateMachineError(StateMachine<OrderStates, OrderEvents> stateMachine, Exception exception) {
-                            return null;
-                        }
                     });
 
-                    sma.resetStateMachine(new DefaultStateMachineContext<OrderStates, OrderEvents>(
-                            order.getOrderState(), null, null, null));
-
+                    sma.resetStateMachine(new DefaultStateMachineContext<>(
+                            OrderStates.valueOf(order.getOrderState().name()), null, null, null));
                 });
         sm.start();
         return sm;
@@ -217,7 +179,6 @@ class Runner implements ApplicationRunner {
 
 
 interface OrderRepository extends JpaRepository<Order, Long> {
-    Order findOne(Long id);
 }
 @Entity (name = "ORDERS")
 @Data
